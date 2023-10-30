@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Wordle Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div id="usedLetters">Used Letters: <span id="lettersList"></span></div>
+    <div id="averageGuesses">Average Guesses: <span id="average"></span></div>
+    <button id="restartButton" onclick="restartGame()" style="display: none;">Restart</button>
+    <input type="text" id="guessInput" placeholder="Enter your guess" disabled>
+    <button id="submitGuessButton" onclick="submitGuess()" disabled>Submit</button>
+    <div id="board"></div> 
+
+    <script>
+        // Create Word Rows
+        function createWordRow() {
+            const row = document.createElement('div');
+            row.className = 'row';
+            for (let i = 0; i < 5; i++) {
+                const cell = document.createElement('div');
+                cell.className = `cell position-${i}`;
+                row.appendChild(cell);
+            }
+            return row;
+        }
+
+        const board = document.getElementById('board');
+        for (let i = 0; i < 6; i++) {
+            board.appendChild(createWordRow());
+        }
+
+        // set the word by choosing from a list
+        /*
+        const wordsArray = ["apple", "happy", "peach", "melon", "kelly"];
+
+        function getRandomWord() {
+            const randomIndex = Math.floor(Math.random() * wordsArray.length);
+            return wordsArray[randomIndex];
+        }
+        const answer = getRandomWord();
+        */
+
+        // set the word by using an API
+        let answer = "";
+
+        function getFiveLetterWordFromAPI() {
+            fetch('https://random-word-api.herokuapp.com/word?length=5')
+            .then(response => response.json())
+            .then(data => {
+                if (data[0]) {
+                    answer = data[0].toLowerCase();
+
+                    // reveal the answer
+                    console.log(`Random 5-letter word: ${answer}`);
+                    document.getElementById('submitGuessButton').disabled = false; 
+                    document.getElementById('guessInput').disabled = false;
+                    document.getElementById('guessInput').focus();
+                } else {
+                    console.error("Couldn't fetch a 5-letter word");
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching word:", error);
+            });
+        }
+
+        getFiveLetterWordFromAPI();
+
+        let currentRow = 0;
+
+        let usedLettersSet = new Set(); // To track the used letters
+
+        function updateUsedLetters(letter) {
+            usedLettersSet.add(letter);
+            document.getElementById('lettersList').textContent = [...usedLettersSet].join(', ');
+        }
+
+        function getStatus(letter, position, word) {
+            if (letter === answer[position]) return "correct";
+
+            const answerOccurrences = [...answer].filter(l => l === letter).length;
+            const guessOccurrences = [...word].filter(l => l === letter).length;
+            const guessOccurrencesBeforeCurrentPos = [...word.slice(0, position)].filter(l => l === letter).length;
+
+            if (answer.includes(letter) && answerOccurrences > guessOccurrencesBeforeCurrentPos && guessOccurrences <= answerOccurrences)
+                return "wrong-place";
+
+            return "not-in-word";
+        }
+
+        function updateCells(word, isAnswer = false, guessWord = "") {
+            let rowToUpdate;
+            const rows = document.querySelectorAll('.row');
+            rowToUpdate = rows[currentRow].children;
+
+            for (let i = 0; i < word.length; i++) {
+                const status = isAnswer ? "correct" : getStatus(word[i], i, guessWord);
+                rowToUpdate[i].textContent = word[i];
+                rowToUpdate[i].classList.add(status);
+            }
+        }
+
+        function getAverageGuesses() {
+            const previousAverage = parseFloat(getCookie('averageGuesses')) || 0;
+            const gamesPlayed = parseFloat(getCookie('gamesPlayed')) || 0;
+
+            // Calculate the new average
+            const newAverage = ((previousAverage * gamesPlayed) + currentRow + 1) / (gamesPlayed + 1);
+
+            // Update the cookies
+            setCookie('averageGuesses', newAverage.toString(), 365);
+            setCookie('gamesPlayed', (gamesPlayed + 1).toString(), 365);
+
+            document.getElementById('average').textContent = newAverage.toFixed(2);
+        }
+
+        function getCookie(cname) {
+            const name = cname + "=";
+            const decodedCookie = decodeURIComponent(document.cookie);
+            const ca = decodedCookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+                if (c.indexOf(name) == 0) {
+                    return c.substring(name.length, c.length);
+                }
+            }
+            return "";
+        }
+
+        function setCookie(cname, cvalue, exdays) {
+            const d = new Date();
+            d.setTime(d.getTime() + (exdays*24*60*60*1000));
+            const expires = "expires="+ d.toUTCString();
+            document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
+        }
+
+        function submitGuess() {
+            const guess = document.getElementById('guessInput').value;
+            [...guess].forEach(letter => updateUsedLetters(letter));
+
+            if (guess.length !== 5) {
+                alert("Please enter a 5-letter word.");
+                document.getElementById('guessInput').focus();
+                return;
+            }
+
+            updateCells(guess, false, guess);
+            if (guess === answer || currentRow === 5) {
+                if (guess === answer) {
+                    document.getElementById('restartButton').style.display = 'block'; // Show the restart button
+                } else if (currentRow === 5) {
+                    alert(`The answer was ${answer}`);
+                    document.getElementById('restartButton').style.display = 'block'; // Show the restart button
+                }
+                getAverageGuesses();
+                return;
+            }
+
+            // Clear the input field
+            document.getElementById('guessInput').value = '';
+            currentRow++;
+            document.getElementById('guessInput').focus();
+        }
+
+        function restartGame() {
+            currentRow = 0;
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.textContent = "";
+                cell.className = cell.className.split(' ')[0]; // Remove all classes except the initial 'cell'
+            });
+            document.getElementById('restartButton').style.display = 'none';
+            document.getElementById('guessInput').value = '';
+            usedLettersSet.clear();
+            document.getElementById('lettersList').textContent = "";
+            getFiveLetterWordFromAPI();
+        }
+
+        // Load the current average on page load
+        document.getElementById('average').textContent = parseFloat(getCookie('averageGuesses')).toFixed(2) || "0";
+
+    </script>
+</body>
+</html>
